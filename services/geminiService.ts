@@ -5,21 +5,25 @@ export const getOptimizationAdvice = async (
   level: Level,
   currentInstructions: GameInstruction[],
   simulation: SimulationResult,
-  userMessage?: string
+  userMessage?: string,
+  apiKeyOverride?: string
 ): Promise<string> => {
   
   // 1. Safe API Key Extraction
-  let apiKey = '';
-  try {
-    // Prevent crash if process is not defined in browser environment
-    apiKey = process.env.API_KEY || '';
-  } catch (e) {
-    console.warn("Environment variable access failed", e);
+  let apiKey = apiKeyOverride || '';
+  
+  if (!apiKey) {
+    try {
+      // Prevent crash if process is not defined in browser environment
+      apiKey = process.env.API_KEY || '';
+    } catch (e) {
+      console.warn("Environment variable access failed", e);
+    }
   }
 
   // 2. Graceful Fallback if Key is Missing
   if (!apiKey) {
-    return "SYSTEM OFFLINE: AI Co-Pilot requires a valid API_KEY. Please check your environment configuration.";
+    return "MISSING_API_KEY";
   }
 
   try {

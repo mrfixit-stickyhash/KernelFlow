@@ -4,7 +4,7 @@ import { LEVELS, INSTRUCTION_SPECS } from './constants';
 import TimelineBoard from './components/TimelineBoard';
 import MetricsPanel from './components/MetricsPanel';
 import { getOptimizationAdvice } from './services/geminiService';
-import { Terminal, Play, Pause, RotateCcw, MessageSquare, ChevronRight, Cpu, StopCircle, FastForward, Wand2 } from 'lucide-react';
+import { Terminal, Play, Pause, RotateCcw, MessageSquare, ChevronRight, Cpu, StopCircle, FastForward, Wand2, Key, Save, X } from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentLevelIdx, setCurrentLevelIdx] = useState(0);
@@ -21,6 +21,11 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [inputMessage, setInputMessage] = useState("");
+  
+  // API Key State
+  const [userApiKey, setUserApiKey] = useState("");
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [tempApiKey, setTempApiKey] = useState("");
 
   const currentLevel = LEVELS[currentLevelIdx];
 
@@ -247,21 +252,30 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!inputMessage.trim() && !simulation.valid) return;
+  const handleSendMessage = async (retryText?: string) => {
+    const textToSend = retryText || inputMessage;
+    if (!textToSend.trim() && !simulation.valid) return;
     
-    const userMsgText = inputMessage || "Analyze board";
+    // If it's a new message (not a retry), add to log and clear input
+    if (!retryText) {
+      const newMessages = [
+        ...messages,
+        { role: 'user', text: textToSend, timestamp: Date.now() } as ChatMessage
+      ];
+      setMessages(newMessages);
+      setInputMessage("");
+    }
     
-    const newMessages = [
-      ...messages,
-      { role: 'user', text: userMsgText, timestamp: Date.now() } as ChatMessage
-    ];
-    setMessages(newMessages);
-    setInputMessage("");
     setIsTyping(true);
 
-    const advice = await getOptimizationAdvice(currentLevel, instructions, simulation, userMsgText);
+    const advice = await getOptimizationAdvice(currentLevel, instructions, simulation, textToSend, userApiKey);
     
+    if (advice === 'MISSING_API_KEY') {
+      setIsTyping(false);
+      setShowApiKeyModal(true);
+      return;
+    }
+
     setIsTyping(false);
     setMessages(prev => [
       ...prev,
@@ -269,9 +283,85 @@ const App: React.FC = () => {
     ]);
   };
 
+  const handleSaveApiKey = () => {
+    if (tempApiKey.trim()) {
+      setUserApiKey(tempApiKey.trim());
+      setShowApiKeyModal(false);
+      
+      // Retry the last user message if it exists
+      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+      if (lastUserMsg) {
+        // We pass the key directly in state update, but for immediate retry we might need to rely on the updated state.
+        // However, state updates are async. Let's just manually call the service with the new key for the retry.
+        setIsTyping(true);
+        // Small delay to allow UI to close
+        setTimeout(async () => {
+          const advice = await getOptimizationAdvice(currentLevel, instructions, simulation, lastUserMsg.text, tempApiKey.trim());
+          setIsTyping(false);
+          setMessages(prev => [
+            ...prev,
+            { role: 'model', text: advice, timestamp: Date.now() }
+          ]);
+        }, 100);
+      }
+    }
+  };
+
   return (
     <div className="flex h-screen w-screen bg-cyber-900 text-gray-100 font-sans overflow-hidden">
       
+      {/* API Key Modal */}
+      {showApiKeyModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-cyber-800 border border-cyber-600 rounded-xl p-6 w-96 shadow-2xl relative animate-in fade-in zoom-in duration-200">
+            <button 
+              onClick={() => setShowApiKeyModal(false)}
+              className="absolute top-3 right-3 text-gray-400 hover:text-white"
+            >
+              <X size={16} />
+            </button>
+            
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="p-2 bg-cyber-cyan/20 rounded-full">
+                <Key size={20} className="text-cyber-cyan" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Enter API Key</h3>
+            </div>
+            
+            <p className="text-sm text-gray-400 mb-4">
+              To use the AI Co-Pilot, you need a Google Gemini API key. This key is stored temporarily in memory.
+            </p>
+
+            <input 
+              type="password"
+              value={tempApiKey}
+              onChange={(e) => setTempApiKey(e.target.value)}
+              placeholder="AIzaSy..."
+              className="w-full bg-black/40 border border-cyber-600 rounded px-3 py-2 text-sm text-white focus:border-cyber-cyan focus:ring-1 focus:ring-cyber-cyan mb-4 font-mono"
+            />
+            
+            <div className="flex justify-end space-x-3">
+               <a 
+                 href="https://aistudio.google.com/app/apikey" 
+                 target="_blank" 
+                 rel="noreferrer"
+                 className="flex items-center px-3 py-2 text-xs text-cyber-cyan hover:underline mr-auto"
+               >
+                 Get a key <ChevronRight size={12} />
+               </a>
+               <button 
+                 onClick={handleSaveApiKey}
+                 disabled={!tempApiKey}
+                 className="flex items-center space-x-2 bg-cyber-cyan hover:bg-cyan-400 text-cyber-900 px-4 py-2 rounded font-bold text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+               >
+                 <Save size={14} />
+                 <span>Save & Retry</span>
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Left Sidebar: Control & Level Info */}
       <div className="w-64 bg-cyber-900 border-r border-cyber-700 flex flex-col z-20 shadow-xl">
         <div className="p-4 border-b border-cyber-700 bg-cyber-800">
@@ -400,9 +490,16 @@ const App: React.FC = () => {
               
               {/* AI Assistant Chat */}
               <div className="h-1/2 bg-cyber-800 border border-cyber-700 rounded-xl flex flex-col overflow-hidden shadow-lg">
-                <div className="p-3 border-b border-cyber-700 bg-cyber-800 flex items-center space-x-2">
-                  <Terminal size={14} className="text-cyber-green" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-cyber-green">Co-Pilot Link</span>
+                <div className="p-3 border-b border-cyber-700 bg-cyber-800 flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Terminal size={14} className="text-cyber-green" />
+                    <span className="text-xs font-bold uppercase tracking-wider text-cyber-green">Co-Pilot Link</span>
+                  </div>
+                  {!userApiKey && (
+                     <button onClick={() => setShowApiKeyModal(true)} className="text-[10px] text-gray-500 hover:text-cyber-cyan flex items-center">
+                        <Key size={10} className="mr-1"/> Set Key
+                     </button>
+                  )}
                 </div>
                 
                 <div className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar">
@@ -440,7 +537,7 @@ const App: React.FC = () => {
                       className="flex-1 bg-cyber-800 border border-cyber-600 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-cyber-cyan placeholder-gray-600"
                     />
                     <button 
-                      onClick={handleSendMessage}
+                      onClick={() => handleSendMessage()}
                       className="bg-cyber-cyan hover:bg-cyan-400 text-cyber-900 p-2 rounded transition-colors"
                     >
                       <Play size={14} fill="currentColor" />

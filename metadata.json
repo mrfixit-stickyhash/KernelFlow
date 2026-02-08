@@ -1,0 +1,5 @@
+{
+  "name": "KernelFlow: Optimization Engine",
+  "description": "A puzzle game where you play as a compiler scheduler optimizing compute kernels. Collaborate with a Gemini-powered AI co-pilot to minimize cycles and maximize instruction-level parallelism.",
+  "requestFramePermissions": []
+}

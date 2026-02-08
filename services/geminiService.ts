@@ -2,9 +2,17 @@ import { GoogleGenAI } from "@google/genai";
 import { Level, GameInstruction, SimulationResult } from '../types';
 import { INSTRUCTION_SPECS } from '../constants';
 
+// Helper to safely access env vars without crashing in browser if process is undefined
+const getApiKey = () => {
+  try {
+    return process.env.API_KEY || '';
+  } catch {
+    return '';
+  }
+};
+
 // Initialize Gemini Client
-// Requires process.env.API_KEY to be set
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 export const getOptimizationAdvice = async (
   level: Level,
@@ -12,7 +20,7 @@ export const getOptimizationAdvice = async (
   simulation: SimulationResult,
   userMessage?: string
 ): Promise<string> => {
-  if (!process.env.API_KEY) {
+  if (!getApiKey()) {
     return "API Key not found. Please set process.env.API_KEY to use the AI Assistant.";
   }
 

@@ -5,7 +5,7 @@ import TimelineBoard from './components/TimelineBoard';
 import MetricsPanel from './components/MetricsPanel';
 import Leaderboard from './components/Leaderboard';
 import { getOptimizationAdvice } from './services/geminiService';
-import { getLevelIdBySlug, fetchCommunityLevels, publishCommunityLevel, SupabaseLevelRow } from './src/lib/backend';
+import { getLevelIdBySlug, fetchCommunityLevels, publishCommunityLevel, SupabaseLevelRow, LeaderboardRow } from './src/lib/backend';
 import { Terminal, Play, Pause, RotateCcw, MessageSquare, ChevronRight, Cpu, StopCircle, FastForward, Wand2, Key, Save, X, Globe, Trophy, Share2, Loader2 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -292,6 +292,21 @@ const App: React.FC = () => {
     }
   };
 
+  // --- Replay Strategy ---
+  const handleReplayRun = (row: LeaderboardRow) => {
+    if (row.schedule_json && row.schedule_json.placements) {
+      const placements = row.schedule_json.placements;
+      setInstructions(prev => prev.map(inst => {
+        const match = placements.find((p: any) => p.instructionId === inst.id);
+        if (match) {
+          return { ...inst, cycle: match.cycle, unitIndex: match.unitIndex };
+        }
+        // If an instruction is not in the replay data, unplace it
+        return { ...inst, cycle: -1, unitIndex: -1 };
+      }));
+    }
+  };
+
   // --- Chat Handler ---
   const handleSendMessage = async (retryText?: string) => {
     const textToSend = retryText || inputMessage;
@@ -544,7 +559,11 @@ const App: React.FC = () => {
                 )}
 
                 {activeTab === 'leaderboard' && (
-                   <Leaderboard supabaseLevelId={supabaseLevelId} refreshTrigger={refreshLeaderboard} />
+                   <Leaderboard 
+                     supabaseLevelId={supabaseLevelId} 
+                     refreshTrigger={refreshLeaderboard}
+                     onReplayRun={handleReplayRun} 
+                   />
                 )}
 
                 {activeTab === 'chat' && (

@@ -14,12 +14,14 @@ export interface SupabaseLevelRow {
 }
 
 export interface LeaderboardRow {
+  score_id: string;
   rn: number;
   player_name: string;
   is_agent: boolean;
   agent_name: string | null;
   cycles: number;
   created_at: string;
+  schedule_json: any;
 }
 
 // --- Helpers ---
@@ -119,16 +121,26 @@ export async function submitScore(params: {
   return data;
 }
 
-export async function fetchTop10(level_id: string) {
+export async function fetchTop10(level_id: string): Promise<LeaderboardRow[]> {
   const { data, error } = await supabase
-    .from("leaderboard_top10") // Assumes this view exists as per instructions
-    .select("*")
+    .from("leaderboard_top10_with_run")
+    .select("score_id,rank,level_id,player_name,is_agent,agent_name,cycles,created_at,schedule_json")
     .eq("level_id", level_id)
-    .order("rn", { ascending: true });
+    .order("rank", { ascending: true });
 
   if (error) {
     console.error("Error fetching leaderboard:", error);
     return [];
   }
-  return data as LeaderboardRow[];
+  
+  return (data || []).map((r: any) => ({
+    score_id: r.score_id,
+    rn: r.rank,
+    player_name: r.player_name,
+    is_agent: r.is_agent,
+    agent_name: r.agent_name,
+    cycles: r.cycles,
+    created_at: r.created_at,
+    schedule_json: r.schedule_json,
+  }));
 }

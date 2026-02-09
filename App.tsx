@@ -6,7 +6,7 @@ import MetricsPanel from './components/MetricsPanel';
 import Leaderboard from './components/Leaderboard';
 import { getOptimizationAdvice } from './services/geminiService';
 import { getLevelIdBySlug, fetchCommunityLevels, publishCommunityLevel, SupabaseLevelRow, LeaderboardRow } from './src/lib/backend';
-import { Terminal, Play, Pause, RotateCcw, MessageSquare, ChevronRight, Cpu, StopCircle, FastForward, Wand2, Key, Save, X, Globe, Trophy, Share2, Loader2 } from 'lucide-react';
+import { Terminal, Play, Pause, RotateCcw, MessageSquare, ChevronRight, Cpu, StopCircle, FastForward, Wand2, Key, Save, X, Globe, Trophy, Share2, Loader2, Tag } from 'lucide-react';
 
 const App: React.FC = () => {
   // Level Management
@@ -35,8 +35,13 @@ const App: React.FC = () => {
   const [userApiKey, setUserApiKey] = useState("");
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [tempApiKey, setTempApiKey] = useState("");
+  
+  // Publish Modal State
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [publishName, setPublishName] = useState("");
+  const [publishDescription, setPublishDescription] = useState("");
+  const [publishTarget, setPublishTarget] = useState("");
+  const [publishTags, setPublishTags] = useState("");
   const [isPublishing, setIsPublishing] = useState(false);
 
   const currentLevel = allLevels[currentLevelIdx];
@@ -103,8 +108,8 @@ const App: React.FC = () => {
         const parsedLevels: Level[] = communityData.map((row: SupabaseLevelRow) => ({
           id: row.slug, // Use slug as internal ID for mapping
           name: row.name,
-          description: row.description,
-          targetCycles: 20, // Default or parse from json
+          description: row.description || "Community Level",
+          targetCycles: row.level_json.targetCycles || 20, // Load custom target
           units: row.level_json.units || [{type: 'MEM', count: 1}, {type: 'ALU', count: 1}],
           instructions: row.level_json.instructions.map((i: any) => ({
              ...i, 
@@ -141,9 +146,6 @@ const App: React.FC = () => {
     // Resolve Supabase ID for Leaderboard
     const resolveId = async () => {
       setSupabaseLevelId(null);
-      // If it's a hardcoded level, we expect a matching slug in DB
-      // If it's a community level (fetched from DB), we might need to store the real UUID differently?
-      // For simplicity, we query by the 'id' (which is the slug)
       const id = await getLevelIdBySlug(currentLevel.id);
       setSupabaseLevelId(id);
     };
@@ -301,7 +303,6 @@ const App: React.FC = () => {
         if (match) {
           return { ...inst, cycle: match.cycle, unitIndex: match.unitIndex };
         }
-        // If an instruction is not in the replay data, unplace it
         return { ...inst, cycle: -1, unitIndex: -1 };
       }));
     }
@@ -357,6 +358,14 @@ const App: React.FC = () => {
   };
 
   // --- Publish Handler ---
+  const openPublishModal = () => {
+    setPublishName("");
+    setPublishDescription("");
+    setPublishTarget(String(currentLevel.targetCycles));
+    setPublishTags("");
+    setShowPublishModal(true);
+  };
+
   const handlePublish = async () => {
     if (!publishName.trim()) return;
     setIsPublishing(true);
@@ -365,8 +374,8 @@ const App: React.FC = () => {
       await publishCommunityLevel({
         slug,
         name: publishName,
+        description: publishDescription.trim() || "A community created kernel.",
         creator_name: "Anonymous",
-        description: "A community created kernel.",
         level_json: {
           units: currentLevel.units,
           instructions: instructions.map(i => ({
@@ -374,12 +383,15 @@ const App: React.FC = () => {
              type: i.type,
              dependencies: i.dependencies,
              variable: i.variable
-          }))
+          })),
+          targetCycles: parseInt(publishTarget) || currentLevel.targetCycles,
+          tags: publishTags.split(',').map(t => t.trim()).filter(Boolean)
         }
       });
       setShowPublishModal(false);
-      setPublishName("");
       alert("Level Published! Refresh to see it in the list.");
+      // Optional: Trigger reload of community levels? 
+      // For now user has to refresh, or we can manually append to list if we want immediate feedback.
     } catch (e) {
       console.error(e);
       alert("Failed to publish.");
@@ -413,13 +425,32 @@ const App: React.FC = () => {
             <button onClick={() => setShowPublishModal(false)} className="absolute top-3 right-3 text-gray-400 hover:text-white"><X size={16} /></button>
             <h3 className="text-lg font-bold text-white mb-4 flex items-center"><Share2 size={20} className="mr-2 text-purple-400"/> Publish Level</h3>
             <p className="text-sm text-gray-400 mb-4">Share current board as a new level.</p>
+            
             <input 
-              type="text" value={publishName} onChange={(e) => setPublishName(e.target.value)} placeholder="Level Name"
-              className="w-full bg-black/40 border border-cyber-600 rounded px-3 py-2 text-sm text-white focus:border-cyber-cyan mb-4"
+              type="text" value={publishName} onChange={(e) => setPublishName(e.target.value)} placeholder="Level Name (Required)"
+              className="w-full bg-black/40 border border-cyber-600 rounded px-3 py-2 text-sm text-white focus:border-cyber-cyan mb-3"
             />
+            
+            <textarea 
+              value={publishDescription} onChange={(e) => setPublishDescription(e.target.value)} placeholder="Description (Optional)"
+              className="w-full bg-black/40 border border-cyber-600 rounded px-3 py-2 text-sm text-white focus:border-cyber-cyan mb-3 resize-none h-20"
+            />
+
+            <div className="flex gap-2 mb-4">
+              <input 
+                type="number" value={publishTarget} onChange={(e) => setPublishTarget(e.target.value)} placeholder="Target Cycles"
+                className="w-1/3 bg-black/40 border border-cyber-600 rounded px-3 py-2 text-sm text-white focus:border-cyber-cyan"
+                title="Target Cycles"
+              />
+              <input 
+                type="text" value={publishTags} onChange={(e) => setPublishTags(e.target.value)} placeholder="Tags (comma separated)"
+                className="flex-1 bg-black/40 border border-cyber-600 rounded px-3 py-2 text-sm text-white focus:border-cyber-cyan"
+              />
+            </div>
+
             <button 
               onClick={handlePublish} disabled={!publishName || isPublishing} 
-              className="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 rounded flex justify-center"
+              className="w-full bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 rounded flex justify-center transition-colors disabled:opacity-50"
             >
               {isPublishing ? <Loader2 className="animate-spin" /> : "Publish to Community"}
             </button>
@@ -460,7 +491,10 @@ const App: React.FC = () => {
             </select>
             <ChevronRight className="absolute right-2 top-2.5 text-gray-400 pointer-events-none" size={16} />
           </div>
-          <p className="mt-3 text-sm text-gray-300 italic">"{currentLevel.description}"</p>
+          <div className="mt-3">
+             <p className="text-sm text-gray-300 italic">"{currentLevel.description}"</p>
+             {/* Show tags if available in description or extra properties (not currently stored in Level object directly except description) */}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -487,7 +521,7 @@ const App: React.FC = () => {
             <RotateCcw size={14} /> <span>Reset Board</span>
           </button>
 
-          <button onClick={() => setShowPublishModal(true)} className="w-full flex items-center justify-center space-x-2 bg-purple-900/30 hover:bg-purple-900/50 text-purple-200 py-2 rounded border border-purple-900/50 transition-colors text-sm">
+          <button onClick={openPublishModal} className="w-full flex items-center justify-center space-x-2 bg-purple-900/30 hover:bg-purple-900/50 text-purple-200 py-2 rounded border border-purple-900/50 transition-colors text-sm">
             <Share2 size={14} /> <span>Publish Level</span>
           </button>
         </div>
